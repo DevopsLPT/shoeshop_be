@@ -1,0 +1,25 @@
+name: CD pipeline
+
+on: 
+  workflow_run: 
+    workflows: ["Build & Push CI"]
+    types: 
+      - completed
+
+jobs:
+
+  deploy:
+    runs-on: self-hosted
+    steps:
+
+      - name: Delete old docker container
+        run: docker rm -f shoeshop_be || true
+        
+      - name: Delete old image
+        run: docker rmi ${{ secrets.DOCKERHUB_USER }}/shoeshop_be:v1 || true
+
+      - name: Docker pull
+        run: docker pull ${{ secrets.DOCKERHUB_USER }}/shoeshop_be:v1
+        
+      - name: Run container
+        run: docker run --name shoeshop_fe -dp 5214:5214 ${{ secrets.DOCKERHUB_USER }}/shoeshop_be:v1
