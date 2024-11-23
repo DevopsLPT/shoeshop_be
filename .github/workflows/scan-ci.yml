@@ -8,7 +8,7 @@ on:
 
 jobs:
   Sonarqube_Static_Code_Analysis:
-    runs-on: ubuntu-latest
+    runs-on: shoeshop
     
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
         docker build --rm --build-arg SNYK_AUTH_TOKEN=${{ secrets.SNYK_TOKEN }} --build-arg OUTPUT_FILENAME=$REPORT_NAME -t $SNYK_IMAGE_NAME -f Dockerfile-snyk .
 
     - name: Run Docker container to perform Snyk scan
-      run: docker run --rm --name $SNYK_CONTAINER_NAME $SNYK_IMAGE_NAME
+      run: docker run --name $SNYK_CONTAINER_NAME $SNYK_IMAGE_NAME
 
     - name: Copy Snyk HTML report from Docker container
       run: docker cp $SNYK_CONTAINER_NAME:/app/$REPORT_NAME.html ./$REPORT_NAME.html
@@ -79,7 +79,7 @@ jobs:
 
 
   Push_Image_Internal:
-    runs-on: ubuntu-latest
+    runs-on: shoeshop
 
 #    env: 
 #      IMAGE_NAME: ${{ secrets.DOCKERHUB_USER }}/shoeshop_fe:v1
