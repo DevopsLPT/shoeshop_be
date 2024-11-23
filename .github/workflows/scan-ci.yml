@@ -58,8 +58,10 @@ jobs:
       IMAGE_NAME: shoeshop_be:v1
 
     steps:
+    - uses: actions/checkout@v4
+
     - name: Docker build image
-      run: docker build --build-arg db_server=${{DB_CONECT_STRING}} -t $IMAGE_NAME .
+      run: docker build --build-arg db_server=${{secrets.DB_CONECT_STRING}} -t $IMAGE_NAME .
 
     - name: Trivy scan image
       run: |
@@ -112,5 +114,5 @@ jobs:
         ECR_REPOSITORY: ${{secrets.ECR_REPOSITORY}}
         IMAGE_TAG: 'v1'
       run: |
-        docker build --build-arg db_server=${{DB_CONECT_STRING}} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build --build-arg db_server=${{secrets.DB_CONECT_STRING}} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
