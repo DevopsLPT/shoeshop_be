@@ -10,7 +10,6 @@ jobs:
   deploy:
     runs-on: self-hosted
     env:
-      ECR_IMAGE_NAME: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:v1
       CONTAINER_NAME: 'shoeshop_be'
 
     steps:
@@ -32,6 +31,7 @@ jobs:
         run: docker rmi $ECR_IMAGE_NAME || true
 
       - name: Docker pull
+
         run: docker pull $ECR_IMAGE_NAME
         
       - name: Run container
