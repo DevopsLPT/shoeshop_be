@@ -8,7 +8,7 @@ on:
         
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: shoeshop_be
     env:
       CONTAINER_NAME: 'shoeshop_be'
 
@@ -31,8 +31,11 @@ jobs:
         run: docker rmi $ECR_IMAGE_NAME || true
 
       - name: Docker pull
-
+        env:
+          ECR_IMAGE_NAME: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
         run: docker pull $ECR_IMAGE_NAME
         
       - name: Run container
+        env:
+          ECR_IMAGE_NAME: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
         run: docker run -e "ConnectionStrings__UserAppCon=${{DB_CONECT_STRING}}" --name $CONTAINER_NAME -dp 5214:5214 $ECR_IMAGE_NAME
