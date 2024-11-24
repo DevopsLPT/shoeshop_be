@@ -38,4 +38,4 @@ jobs:
       - name: Run container
         env:
           ECR_IMAGE_NAME: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
-        run: docker run -e "ConnectionStrings__UserAppCon=${{DB_CONECT_STRING}}" --name $CONTAINER_NAME -dp 5214:5214 $ECR_IMAGE_NAME
+        run: docker run -e "ConnectionStrings__UserAppCon=${{secrets.DB_CONECT_STRING}}" --name $CONTAINER_NAME -dp 5214:5214 $ECR_IMAGE_NAME
