@@ -5,37 +5,56 @@ on:
     workflows: ["Scan CI"]
     types: 
       - completed
-        
+
 jobs:
-  deploy:
-    runs-on: shoeshop_be
-    env:
-      CONTAINER_NAME: 'shoeshop_be'
+  Get_Credentials:
+    runs-on: build
+    outputs:
+      DOCKER_REGISTRY_USER: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY_USER }}
+      DOCKER_REGISTRY_PASS: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY_PASS }}
+      DOCKER_REGISTRY: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY }}
+      DOCKER_REPO: ${{ steps.get-docker-credentials.outputs.DOCKER_REPO }}
 
     steps:
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.REGION }}
+      - name: Get Docker Registry Credentials
+        id: get-docker-credentials
+        run: |
+          SECRETS=$(curl -s --header "X-Vault-Token: ${{secrets.VAULT_TOKEN}}" --request GET ${{secrets.DOCKER_REGISTRY_CREDENTIAL_PATH}} | jq -r '.data.data')
+          echo "DOCKER_REGISTRY_USER=$(echo $SECRETS | jq -r '.user')" >> $GITHUB_OUTPUT
+          echo "DOCKER_REGISTRY_PASS=$(echo $SECRETS | jq -r '.pass')" >> $GITHUB_OUTPUT
+          echo "DOCKER_REGISTRY=$(echo $SECRETS | jq -r '.url')" >> $GITHUB_OUTPUT
+          echo "DOCKER_REPO=$(echo $SECRETS | jq -r '.be_repo')" >> $GITHUB_OUTPUT
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+
+  deploy:
+    runs-on: build
+    env:
+      CONTAINER_NAME: shoeshop_be
+      IMAGE_OLD_TAG: latest
+      IMAGE_NEW_TAG: latest
+    needs: Get_Credentials
+    steps:
+      - name: Set env
+        run: |
+          echo "IMAGE_NAME=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}" >> $GITHUB_ENV
+
+          echo "DOCKER_REGISTRY_USER=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY_USER}}" >> $GITHUB_ENV
+
+          echo "DOCKER_REGISTRY_PASS=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY_PASS}}" >> $GITHUB_ENV
+
+          echo "DOCKER_REGISTRY=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}" >> $GITHUB_ENV
 
       - name: Delete old docker container
-        run: docker rm -f $CONTAINER_NAME || true
+        run: docker rm -f ${{ env.CONTAINER_NAME }} || true
         
       - name: Delete old image
-        run: docker rmi $ECR_IMAGE_NAME || true
+        run: docker rmi ${{ env.IMAGE_NAME }}:${{ env.IMAGE_OLD_TAG }} || true
+
+      - name: Log in to Docker Registry
+        run: echo "${{ env.DOCKER_REGISTRY_PASS }}" | docker login ${{env.DOCKER_REGISTRY}} -u "${{ env.DOCKER_REGISTRY_USER }}" --password-stdin
 
       - name: Docker pull
-        env:
-          ECR_IMAGE_NAME: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
-        run: docker pull $ECR_IMAGE_NAME
+        run: docker pull ${{ env.IMAGE_NAME }}:${{ env.IMAGE_NEW_TAG }} 
         
       - name: Run container
-        env:
-          ECR_IMAGE_NAME: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
-        run: docker run -e "ConnectionStrings__UserAppCon=${{secrets.DB_CONECT_STRING}}" --name $CONTAINER_NAME -dp 5214:5214 $ECR_IMAGE_NAME
+        run: docker run --name ${{ env.CONTAINER_NAME }} -dp 3000:3000 ${{ env.IMAGE_NAME }}:${{ env.IMAGE_NEW_TAG }} 

@@ -7,112 +7,164 @@ on:
     branches: [ "main" ]
 
 jobs:
+
+  Get_Credentials:
+    runs-on: build
+    outputs:
+      DOCKER_REGISTRY_USER: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY_USER }}
+      DOCKER_REGISTRY_PASS: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY_PASS }}
+      DOCKER_REGISTRY: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY }}
+      DOCKER_REPO: ${{ steps.get-docker-credentials.outputs.DOCKER_REPO }}
+      IMAGE_TAG: latest
+
+      JFROG_USER: ${{ steps.get-jfrog-credentials.outputs.JFROG_USER }}
+      JFROG_PASS: ${{ steps.get-jfrog-credentials.outputs.JFROG_PASS }}
+      JFROG_PATH: ${{ steps.get-jfrog-credentials.outputs.JFROG_PATH }}
+
+      SONAR_PROJECTKEY: ${{ steps.get-tokens.outputs.SONAR_PROJECTKEY }}
+      SONAR_TOKEN: ${{ steps.get-tokens.outputs.SONAR_TOKEN }}
+      SONAR_HOST: ${{ steps.get-tokens.outputs.SONAR_HOST }}
+      DB_CONNECT_STRING: ${{ steps.get-tokens.outputs.DB_CONNECT_STRING }}
+
+    steps:
+      - name: Get Docker Registry Credentials
+        id: get-docker-credentials
+        run: |
+          SECRETS=$(curl -s --header "X-Vault-Token: ${{secrets.VAULT_TOKEN}}" --request GET ${{secrets.DOCKER_REGISTRY_CREDENTIAL_PATH}} | jq -r '.data.data')
+          echo "DOCKER_REGISTRY_USER=$(echo $SECRETS | jq -r '.user')" >> $GITHUB_OUTPUT
+          echo "DOCKER_REGISTRY_PASS=$(echo $SECRETS | jq -r '.pass')" >> $GITHUB_OUTPUT
+          echo "DOCKER_REGISTRY=$(echo $SECRETS | jq -r '.url')" >> $GITHUB_OUTPUT
+          echo "DOCKER_REPO=$(echo $SECRETS | jq -r '.be_repo')" >> $GITHUB_OUTPUT
+
+      - name: Get JFrog Credentials
+        id: get-jfrog-credentials
+        run: |
+          SECRETS=$(curl -s --header "X-Vault-Token: ${{secrets.VAULT_TOKEN}}" --request GET ${{secrets.JFROG_CREDENTIAL_PATH}} | jq -r '.data.data')
+          echo "JFROG_USER=$(echo $SECRETS | jq -r '.user')" >> $GITHUB_OUTPUT
+          echo "JFROG_PASS=$(echo $SECRETS | jq -r '.pass')" >> $GITHUB_OUTPUT
+          echo "JFROG_PATH=$(echo $SECRETS | jq -r '.path_be')" >> $GITHUB_OUTPUT
+
+      - name: Get Tokens and keys
+        id: get-tokens
+        run: |
+          SECRETS=$(curl -s --header "X-Vault-Token: ${{secrets.VAULT_TOKEN}}" --request GET ${{secrets.TOKENS_CREDENTIAL_PATH}} | jq -r '.data.data')
+          echo "SONAR_PROJECTKEY=$(echo $SECRETS | jq -r '.projectKey')" >> $GITHUB_OUTPUT
+          echo "SONAR_TOKEN=$(echo $SECRETS | jq -r '.token')" >> $GITHUB_OUTPUT
+          echo "SONAR_HOST=$(echo $SECRETS | jq -r '.url')" >> $GITHUB_OUTPUT
+          echo "DB_CONNECT_STRING=$(echo $SECRETS | jq -r '.db')" >> $GITHUB_OUTPUT
+
+
   Sonarqube_Static_Code_Analysis:
-    runs-on: shoeshop
-    
+    runs-on: ubuntu-latest
+    needs: Get_Credentials
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  
-          
+
+      - name: Set env
+        run: |
+          echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
+
+          echo "SONAR_HOST=${{needs.Get_Credentials.outputs.SONAR_HOST}}" >> $GITHUB_ENV
+
+          echo "SONAR_TOKEN=${{needs.Get_Credentials.outputs.SONAR_TOKEN}}" >> $GITHUB_ENV
+
+          echo "SONAR_PROJECTKEY=${{needs.Get_Credentials.outputs.SONAR_PROJECTKEY}}" >> $GITHUB_ENV
+
       - name: SonarQube Scan 
-        run: docker run --rm -v $PWD:/usr/src sonarsource/sonar-scanner-cli:latest sonar-scanner -Dsonar.host.url=${{secrets.SONAR_HOST}} -Dsonar.token=${{secrets.SONAR_TOKEN}} -Dsonar.projectKey=${{secrets.SONAR_PROJECTKEY}}
+        run: docker run --rm -v $GITHUB_WORKSPACE:/usr/src sonarsource/sonar-scanner-cli:latest sonar-scanner -Dsonar.host.url=${{env.SONAR_HOST}} -Dsonar.token=${{env.SONAR_TOKEN}} -Dsonar.projectKey=${{env.SONAR_PROJECTKEY}}
 
-  Snyk_Composition_Analysis:
-    runs-on: ubuntu-latest
-
-    env:
-      REPORT_NAME: shoeshop_be_snyk_report
-      SNYK_IMAGE_NAME: snyk_scan_image
-      SNYK_CONTAINER_NAME: snyk_scan
-
+  Build_Docker_Image:
+    runs-on: build
+    needs: Get_Credentials
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Build Docker image with Snyk scan
+    - name: Set env
       run: |
-        docker build --rm --build-arg SNYK_AUTH_TOKEN=${{ secrets.SNYK_TOKEN }} --build-arg OUTPUT_FILENAME=$REPORT_NAME -t $SNYK_IMAGE_NAME -f Dockerfile-snyk .
+        echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
 
-    - name: Run Docker container to perform Snyk scan
-      run: docker run --name $SNYK_CONTAINER_NAME $SNYK_IMAGE_NAME
+        echo "BE_API=${{needs.Get_Credentials.outputs.BE_API}}" >> $GITHUB_ENV
 
-    - name: Copy Snyk HTML report from Docker container
-      run: docker cp $SNYK_CONTAINER_NAME:/app/$REPORT_NAME.html ./$REPORT_NAME.html
-
-    - name: Upload Snyk HTML report as an artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: shoeshop_be-snyk-report
-        path: ./$REPORT_NAME.html
-
-    - name: Clean up Docker resources
-      run: |
-        docker rm -f $SNYK_CONTAINER_NAME || true
-        docker rmi -f $SNYK_IMAGE_NAME || true
-
-  Trivy_Image_Scan:
-    runs-on: ubuntu-latest
-
-    env:
-      REPORT_NAME: shoeshop_be_trivy_report.html
-      IMAGE_NAME: shoeshop_be:v1
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Docker build image
-      run: docker build --build-arg db_server=${{secrets.DB_CONECT_STRING}} -t $IMAGE_NAME .
-
-    - name: Trivy scan image
-      run: |
-        docker run --rm -v $PWD:/shoeshop_fe -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --download-db-only
-        docker run --rm -v $PWD:/shoeshop_fe -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --format template --template "@contrib/html.tpl" --output /shoeshop_fe/$REPORT_NAME $IMAGE_NAME
-    
-    - name: Upload Trivy image scan HTML report as an artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: shoeshop_fe_trivy_report
-        path: $REPORT_NAME
-
-    - name: Clean up Docker resources
-      run: docker rmi -f $IMAGE_NAME || true
-
-
-  Push_Image_Internal:
-    runs-on: shoeshop
-
-#    env: 
-#      IMAGE_NAME: ${{ secrets.DOCKERHUB_USER }}/shoeshop_fe:v1
-
-    steps: 
     - name: Checkout source code
       uses: actions/checkout@v4
 
-#    - name: Docker build image
-#      run: docker build -t $IMAGE_NAME .
+    - name: Docker build image
+      run: docker build --build-arg db_server=${{env.BE_API}} -t ${{env.DOCKER_IMAGE}} .
 
-#    - name: Log in to Docker Hub
-#      run: echo "${{ secrets.DOCKERHUB_PASS }}" | docker login -u "${{ secrets.DOCKERHUB_USER }}" --password-stdin
+  Trivy_Image_Scan:
+    runs-on: build
+    needs: [Build_Docker_Image, Get_Credentials]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
 
-#    - name: Push Docker image
-#      run: docker push $IMAGE_NAME
+      - name: Set env
+        run: |
+          echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.REGION }}
+          echo "REPORT_NAME=shoeshop_be_trivy_report_$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+          echo "JFROG_USER=${{needs.Get_Credentials.outputs.JFROG_USER}}" >> $GITHUB_ENV
 
-    - name: Build, tag, and push image to Amazon ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: ${{secrets.ECR_REPOSITORY}}
-        IMAGE_TAG: 'latest'
-      run: |
-        docker build --build-arg db_server=${{secrets.DB_CONECT_STRING}} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "JFROG_PASS=${{needs.Get_Credentials.outputs.JFROG_PASS}}" >> $GITHUB_ENV
+
+          echo "JFROG_PATH=${{needs.Get_Credentials.outputs.JFROG_PATH}}" >> $GITHUB_ENV
+
+      - name: Trivy scan image
+        run: |
+          docker run --rm -v $GITHUB_WORKSPACE:/shoeshop_be -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --download-db-only
+
+          docker run --rm -v $GITHUB_WORKSPACE:/shoeshop_be -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --format template --template "@contrib/html.tpl" --output /shoeshop_be/${{env.REPORT_NAME}}.html ${{env.DOCKER_IMAGE}}
+    
+      - name: Upload Trivy image scan HTML report as an artifact to GIthub
+        uses: actions/upload-artifact@v4
+        with:
+          name: shoeshop_be_trivy_report
+          path: $GITHUB_WORKSPACE/${{ env.REPORT_NAME }}.html
+      
+      - name: Upload Trivy image scan HTML report as an artifact to JFrog
+        run: curl -X PUT -u ${{env.JFROG_USER}}:${{env.JFROG_PASS}} -T $GITHUB_WORKSPACE/${{ env.REPORT_NAME }}.html ${{env.JFROG_PATH}}/${{ env.REPORT_NAME }}.html
+
+  Push_Image_Internal:
+    runs-on: build  
+    needs: [Trivy_Image_Scan, Get_Credentials]
+    steps:
+      - name: Set env
+        run: |
+          echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
+
+          echo "DOCKER_REGISTRY_USER=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY_USER}}" >> $GITHUB_ENV
+
+          echo "DOCKER_REGISTRY_PASS=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY_PASS}}" >> $GITHUB_ENV
+
+          echo "DOCKER_REGISTRY=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}" >> $GITHUB_ENV
+
+      - name: Log in to Docker Registry
+        run: echo "${{env.DOCKER_REGISTRY_PASS}}" | docker login ${{env.DOCKER_REGISTRY}} -u "${{env.DOCKER_REGISTRY_USER}}" --password-stdin
+
+      - name: Push Docker image
+        run: docker push ${{env.DOCKER_IMAGE}}
+
+  Clean_Up:
+    runs-on: build
+    needs: [Push_Image_Internal, Get_Credentials]
+    steps:
+      - name: Set env
+        run: |
+          echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
+                    
+          echo "DOCKER_REGISTRY=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}" >> $GITHUB_ENV
+
+      - name: Cleanup Trivy DB
+        run: rm -rf ~/.cache/trivy
+
+      - name: Log out from Docker Registry
+        run: docker logout ${{env.DOCKER_REGISTRY}} || true
+
+      - name: Remove Docker Image
+        run: docker rmi -f ${{env.DOCKER_IMAGE}} || true
+
+      - name: Clean up workspace
+        if: always()
+        run: rm -rf $GITHUB_WORKSPACE || true
