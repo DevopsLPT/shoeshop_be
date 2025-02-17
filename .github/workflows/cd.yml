@@ -8,7 +8,7 @@ on:
 
 jobs:
   Get_Credentials:
-    runs-on: build
+    runs-on: shoeshop-backend
     outputs:
       DOCKER_REGISTRY_USER: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY_USER }}
       DOCKER_REGISTRY_PASS: ${{ steps.get-docker-credentials.outputs.DOCKER_REGISTRY_PASS }}
@@ -27,7 +27,7 @@ jobs:
 
 
   Deploy:
-    runs-on: build
+    runs-on: shoeshop-backend
     env:
       CONTAINER_NAME: shoeshop_be
       IMAGE_OLD_TAG: latest
@@ -60,7 +60,7 @@ jobs:
         run: docker run --name ${{ env.CONTAINER_NAME }} -dp 5214:5214 ${{ env.IMAGE_NAME }}:${{ env.IMAGE_NEW_TAG }} 
   
   Clean_Up:
-    runs-on: build
+    runs-on: shoeshop-backend
     needs: Deploy
     steps:
       - name: Set env
