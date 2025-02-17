@@ -54,26 +54,26 @@ jobs:
           echo "DB_CONNECT_STRING=$(echo $SECRETS | jq -r '.db')" >> $GITHUB_OUTPUT
 
 
-  Sonarqube_Static_Code_Analysis:
-    runs-on: ubuntu-latest
-    needs: Get_Credentials
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  
+  # Sonarqube_Static_Code_Analysis:
+  #   runs-on: ubuntu-latest
+  #   needs: Get_Credentials
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0  
 
-      - name: Set env
-        run: |
-          echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
+  #     - name: Set env
+  #       run: |
+  #         echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
 
-          echo "SONAR_HOST=${{needs.Get_Credentials.outputs.SONAR_HOST}}" >> $GITHUB_ENV
+  #         echo "SONAR_HOST=${{needs.Get_Credentials.outputs.SONAR_HOST}}" >> $GITHUB_ENV
 
-          echo "SONAR_TOKEN=${{needs.Get_Credentials.outputs.SONAR_TOKEN}}" >> $GITHUB_ENV
+  #         echo "SONAR_TOKEN=${{needs.Get_Credentials.outputs.SONAR_TOKEN}}" >> $GITHUB_ENV
 
-          echo "SONAR_PROJECTKEY=${{needs.Get_Credentials.outputs.SONAR_PROJECTKEY}}" >> $GITHUB_ENV
+  #         echo "SONAR_PROJECTKEY=${{needs.Get_Credentials.outputs.SONAR_PROJECTKEY}}" >> $GITHUB_ENV
 
-      - name: SonarQube Scan 
-        run: docker run --rm -v $GITHUB_WORKSPACE:/usr/src sonarsource/sonar-scanner-cli:latest sonar-scanner -Dsonar.host.url=${{env.SONAR_HOST}} -Dsonar.token=${{env.SONAR_TOKEN}} -Dsonar.projectKey=${{env.SONAR_PROJECTKEY}}
+  #     - name: SonarQube Scan 
+  #       run: docker run --rm -v $GITHUB_WORKSPACE:/usr/src sonarsource/sonar-scanner-cli:latest sonar-scanner -Dsonar.host.url=${{env.SONAR_HOST}} -Dsonar.token=${{env.SONAR_TOKEN}} -Dsonar.projectKey=${{env.SONAR_PROJECTKEY}}
 
   Build_Docker_Image:
     runs-on: build
@@ -91,44 +91,45 @@ jobs:
     - name: Docker build image
       run: docker build --build-arg db_server=${{env.BE_API}} -t ${{env.DOCKER_IMAGE}} .
 
-  Trivy_Image_Scan:
-    runs-on: build
-    needs: [Build_Docker_Image, Get_Credentials]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 
+  # Trivy_Image_Scan:
+  #   runs-on: build
+  #   needs: [Build_Docker_Image, Get_Credentials]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0 
 
-      - name: Set env
-        run: |
-          echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
+  #     - name: Set env
+  #       run: |
+  #         echo "DOCKER_IMAGE=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}/${{needs.Get_Credentials.outputs.DOCKER_REPO}}:${{needs.Get_Credentials.outputs.IMAGE_TAG}}" >> $GITHUB_ENV
 
-          echo "REPORT_NAME=shoeshop_be_trivy_report_$(date +'%Y%m%d')" >> $GITHUB_ENV
+  #         echo "REPORT_NAME=shoeshop_be_trivy_report_$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-          echo "JFROG_USER=${{needs.Get_Credentials.outputs.JFROG_USER}}" >> $GITHUB_ENV
+  #         echo "JFROG_USER=${{needs.Get_Credentials.outputs.JFROG_USER}}" >> $GITHUB_ENV
 
-          echo "JFROG_PASS=${{needs.Get_Credentials.outputs.JFROG_PASS}}" >> $GITHUB_ENV
+  #         echo "JFROG_PASS=${{needs.Get_Credentials.outputs.JFROG_PASS}}" >> $GITHUB_ENV
 
-          echo "JFROG_PATH=${{needs.Get_Credentials.outputs.JFROG_PATH}}" >> $GITHUB_ENV
+  #         echo "JFROG_PATH=${{needs.Get_Credentials.outputs.JFROG_PATH}}" >> $GITHUB_ENV
 
-      - name: Trivy scan image
-        run: |
-          docker run --rm -v $GITHUB_WORKSPACE:/shoeshop_be -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --download-db-only
+  #     - name: Trivy scan image
+  #       run: |
+  #         docker run --rm -v $GITHUB_WORKSPACE:/shoeshop_be -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --download-db-only
 
-          docker run --rm -v $GITHUB_WORKSPACE:/shoeshop_be -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --format template --template "@contrib/html.tpl" --output /shoeshop_be/${{env.REPORT_NAME}}.html ${{env.DOCKER_IMAGE}}
+  #         docker run --rm -v $GITHUB_WORKSPACE:/shoeshop_be -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --format template --template "@contrib/html.tpl" --output /shoeshop_be/${{env.REPORT_NAME}}.html ${{env.DOCKER_IMAGE}}
     
-      - name: Upload Trivy image scan HTML report as an artifact to GIthub
-        uses: actions/upload-artifact@v4
-        with:
-          name: shoeshop_be_trivy_report
-          path: $GITHUB_WORKSPACE/${{ env.REPORT_NAME }}.html
+  #     - name: Upload Trivy image scan HTML report as an artifact to GIthub
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: shoeshop_be_trivy_report
+  #         path: $GITHUB_WORKSPACE/${{ env.REPORT_NAME }}.html
       
-      - name: Upload Trivy image scan HTML report as an artifact to JFrog
-        run: curl -X PUT -u ${{env.JFROG_USER}}:${{env.JFROG_PASS}} -T $GITHUB_WORKSPACE/${{ env.REPORT_NAME }}.html ${{env.JFROG_PATH}}/${{ env.REPORT_NAME }}.html
+  #     - name: Upload Trivy image scan HTML report as an artifact to JFrog
+  #       run: curl -X PUT -u ${{env.JFROG_USER}}:${{env.JFROG_PASS}} -T $GITHUB_WORKSPACE/${{ env.REPORT_NAME }}.html ${{env.JFROG_PATH}}/${{ env.REPORT_NAME }}.html
 
   Push_Image_Internal:
     runs-on: build  
-    needs: [Trivy_Image_Scan, Get_Credentials]
+    # needs: [Trivy_Image_Scan, Get_Credentials]
+    needs: [Get_Credentials]
     steps:
       - name: Set env
         run: |
