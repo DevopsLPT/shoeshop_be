@@ -26,7 +26,7 @@ jobs:
           echo "DOCKER_REPO=$(echo $SECRETS | jq -r '.be_repo')" >> $GITHUB_OUTPUT
 
 
-  deploy:
+  Deploy:
     runs-on: build
     env:
       CONTAINER_NAME: shoeshop_be
@@ -58,3 +58,14 @@ jobs:
         
       - name: Run container
         run: docker run --name ${{ env.CONTAINER_NAME }} -dp 5214:5214 ${{ env.IMAGE_NAME }}:${{ env.IMAGE_NEW_TAG }} 
+  
+  Clean_Up:
+    runs-on: build
+    needs: Deploy
+    steps:
+      - name: Set env
+        run: |
+          echo "DOCKER_REGISTRY=${{needs.Get_Credentials.outputs.DOCKER_REGISTRY}}" >> $GITHUB_ENV
+
+      - name: Log out from Docker Registry
+        run: docker logout ${{env.DOCKER_REGISTRY}} || true
