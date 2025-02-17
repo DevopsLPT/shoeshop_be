@@ -129,7 +129,7 @@ jobs:
   Push_Image_Internal:
     runs-on: build  
     # needs: [Trivy_Image_Scan, Get_Credentials]
-    needs: [Build_Docker_Image]
+    needs: [Build_Docker_Image, Get_Credentials]
     steps:
       - name: Set env
         run: |
