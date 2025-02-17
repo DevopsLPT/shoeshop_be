@@ -1,13 +1,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
+ARG db_server
+ENV ConnectionStrings__UserAppCon=$db_server
+
 WORKDIR /app
 COPY . .
 RUN dotnet publish -c Release -o out
 
 FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS deploy
 WORKDIR /deploy
-
-ARG db_server
-ENV ConnectionStrings__UserAppCon=$db_server
 
 RUN useradd -r backend && chown -R backend. /deploy
 
